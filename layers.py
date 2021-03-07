@@ -20,13 +20,12 @@ def get_layer_uid(layer_name=''):
 
 
 def dropout_sparse(x, keep_prob, num_nonzero_elems):
-
     noise_shape = [num_nonzero_elems]
     random_tensor = keep_prob
     random_tensor += tf.random_uniform(noise_shape)
     dropout_mask = tf.cast(tf.floor(random_tensor), dtype=tf.bool)
     pre_out = tf.sparse_retain(x, dropout_mask)
-    return pre_out * (1./keep_prob)
+    return pre_out * (1. / keep_prob)
 
 
 def weight_variable_glorot(input_dim, output_dim, name=""):
@@ -37,6 +36,7 @@ def weight_variable_glorot(input_dim, output_dim, name=""):
     initial = tf.random_uniform([input_dim, output_dim], minval=-init_range,
                                 maxval=init_range, dtype=tf.float32)
     return tf.Variable(initial, name=name)
+
 
 class Layer(object):
     """Base layer class. Defines basic API for all layer objects.
@@ -49,6 +49,7 @@ class Layer(object):
             (i.e. takes input, returns output)
         __call__(inputs): Wrapper for _call()
     """
+
     def __init__(self, **kwargs):
         allowed_kwargs = {'name', 'logging'}
         for kwarg in kwargs.keys():
@@ -72,39 +73,40 @@ class Layer(object):
             return outputs
 
 
-
 class HGNN_conv(Layer):
     """Basic hypergraph convolution layer."""
+
     def __init__(self, input_dim, output_dim, adj, n_hyper, dropout=0., act=tf.nn.relu, **kwargs):
         super(HGNN_conv, self).__init__(**kwargs)
         with tf.variable_scope(self.name + '_vars'):
             k = 0
-            self.vars['weights_%d' %k] = weight_variable_glorot(input_dim, output_dim, name="weights_%d" %k)
-            for k in range(1, n_hyper+1):
-                self.vars['weights_%d' %k] = weight_variable_glorot(output_dim, output_dim, name="weights_%d" %k)
+            self.vars['weights_%d' % k] = weight_variable_glorot(input_dim, output_dim,
+                                                                 name="weights_%d" % k)  # 100 100
+            for k in range(1, n_hyper + 1):
+                self.vars['weights_%d' % k] = weight_variable_glorot(output_dim, output_dim,
+                                                                     name="weights_%d" % k)  # 100 100
         self.dropout = dropout
-        self.adj = adj
-        self.act = act
-        self.n_hyper = n_hyper
+        self.adj = adj  # 'G': 1226 1226 'E': 4241,1226
+        self.act = act  # relu
+        self.n_hyper = n_hyper  # 2
 
     def _call(self, inputs):
         x = inputs
         # first layer - no dropout
         k = 0
-        x = tf.matmul(x, self.vars['weights_%d' %k])
+        x = tf.matmul(x, self.vars['weights_%d' % k])
         y = tf.sparse_tensor_dense_matmul(self.adj['E'], x)
         x = tf.sparse_tensor_dense_matmul(self.adj['G'], x)
 
         x = self.act(x)
 
         for k in range(1, self.n_hyper):
-            x = tf.nn.dropout(x, 1-self.dropout)
-            x = tf.matmul(x, self.vars['weights_%d' %k])
+            x = tf.nn.dropout(x, 1 - self.dropout)
+            x = tf.matmul(x, self.vars['weights_%d' % k])
             x = tf.sparse_tensor_dense_matmul(self.adj['G'], x)
             x = self.act(x)
         k = self.n_hyper
-        x1 = tf.nn.dropout(x, 1-self.dropout)
+        x1 = tf.nn.dropout(x, 1 - self.dropout)
         y = tf.sparse_tensor_dense_matmul(self.adj['E'], x1)
         y = self.act(y)
-        return x,y
-
+        return x, y
